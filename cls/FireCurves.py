@@ -1,34 +1,41 @@
 # -*- coding: utf-8 -*-
+__version__ = '0.01a'
+
 import numpy as np
+
 
 class ISO834(object):
     """
         Description:
             generates so called the 'standard fire curve' based on ISO 834
-        Attributs:
+        Attributes:
             timeStep            {double, s⁻¹}           time step between each interval
             timeLength          {double, s}             time span, i.e. x-axis limit
             ambientTemperature  {double, ℃}             ambient temperature
         Methods:
             TimeInMinutes()     {ndarray, min}          convert time array data into minutes
     """
-    def __init__(self, timeStep = 1.0 , timeLength = 18000, ambientTemperature = 25):
-        self.timeStep = timeStep
-        self.timeLength = timeLength
-        self.ambientTemperature = ambientTemperature
+    def __init__(self, time_step=1.0, time_end=18000., temperature_ambient=25.):
+        self.timeStep = time_step
+        self.timeLength = time_end
+        self.ambientTemperature = temperature_ambient
         
         # START: time-temperature curve calculation
-        timeArray = np.arange(0, timeLength + timeStep, timeStep)
-        temperatureArray = 345. * np.log10(timeArray[1:]/60. * 8. + 1.) + ambientTemperature
-        temperatureArray = np.insert(temperatureArray, 0, ambientTemperature)
+        timeArray = np.arange(0, time_end + time_step, time_step)
+        temperatureArray = 345. * np.log10(timeArray[1:]/60. * 8. + 1.) + temperature_ambient
+        temperatureArray = np.insert(temperatureArray, 0, temperature_ambient)
         # END: time-temperature curve calculation
 
         self.timeArray = timeArray
         self.temperatureArray = temperatureArray
 
-    @property
-    def ArraySize(self):
-        return np.size(self.timeArray)
+    def define_properties(self):
+        pass
+
+    def make_temperatures(self):
+        pass
+
+
 
 
 class ASTM_E119(object):

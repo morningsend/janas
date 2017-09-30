@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 
-class ISO834(object):
+class FireCurve(object):
     """Generates so 'standard fire curve' based on ISO 834
         Attributes:
             _time_step              float               s, time step between each interval
@@ -13,149 +13,87 @@ class ISO834(object):
             _temperature_ambient    float               K, ambient temperature
             time                    ndarray, float      s, calculated time array
             temperature             ndarray, float      K, calculated temperature array
+        Methods:
     """
-    def __init__(self, time_step=1.0, time_start=0., time_end=18000., temperature_ambient=293.15):
-        # Object attributes
-        self._time_start = time_start
-        self._time_step = time_step
-        self._time_end = time_end
-        self._temperature_ambient = temperature_ambient
+    def __default_value(self, variable_name, default_value):
+        if variable_name in self.__kwargs:
+            return self.__kwargs[variable_name]
+        else:
+            return default_value
 
-        # Object attributes (derived)
+    def __init__(self, kind_fire_curve, **kwargs):
+        # time_step = 1.0, time_start = 0., time_end = 18000., temperature_ambient = 293.15
+
+        # Initiate object attributes
+        self._kind_fire_curve = kind_fire_curve
+        self.__kwargs = kwargs
+        self._time_start = self.__default_value('time_start', 0.)
+        self._time_end = self.__default_value('time_end', 60.*60.*2.)
+        self._time_step = self.__default_value('time_step', 1.)
+        self._temperature_ambient = self.__default_value('temperature_ambient', 293.15)
+
+        # Initiate object attributes (derived)
         self.time = None
         self.temperature = None
         self.__data = {"Time [s]": None, "Temperature [K]": None, "Temperature [C]": None}
 
         # Object methods
-        self.__make_time()
-        self.__make_temperatures()
+        self.time = self.__make_time(self._time_start, self._time_end, self._time_step)
+        fires = {
+            'iso 834': self.__make_temperatures_iso834,
+            'astm e119': self.__make_temperatures_astme119,
+            'eurocode hydrocarbon': self.__make_temperature_eurocode_hydrocarbon,
+            'eurocode external': self.__make_temperature_eurocode_externalfire,
+        }
+        self.temperature = fires[self._kind_fire_curve](np.array(self.time), float(self._temperature_ambient))
 
-    def __make_time(self):
-        time_end = self._time_end
-        time_step = self._time_step
-
-        self.time = np.arange(0, time_end + time_step, time_step)
         self.__data['Time [s]'] = self.time
-
-    def __make_temperatures(self):
-        time = self.time
-        temperature_ambient = self._temperature_ambient - 273.15
-
-        temperature = 345. * np.log10(time[1:] / 60. * 8. + 1.) + temperature_ambient
-        temperature = np.insert(temperature, 0, np.asarray([temperature_ambient]))
-
-        self.temperature = temperature + 273.15
         self.__data['Temperature [K]'] = self.temperature
         self.__data['Temperature [C]'] = self.temperature - 273.15
+
+    @staticmethod
+    def __make_time(time_start, time_end, time_step):
+        time = np.arange(time_start, time_end + time_step, time_step)
+        time[time <= 0] = np.nan
+        return time
+
+    @staticmethod
+    def __make_temperatures_iso834(time, temperature_ambient):
+        time /= 60.  # convert time from second to minute
+        temperature_ambient -= 273.15
+        temperature = 345. * np.log10(time * 8. + 1.) + temperature_ambient
+        return temperature + 273.15  # convert from celsius to kelvin
+
+    @staticmethod
+    def __make_temperatures_astme119(time, temperature_ambient):
+        time /= 1200.  # convert from seconds to hours
+        temperature_ambient -= 273.15  # convert temperature from kelvin to celcius
+        temperature = 750 * (1 - np.exp(-3.79553 * np.sqrt(time))) + 170.41 * np.sqrt(time) + temperature_ambient
+        return temperature + 273.15  # convert from celsius to kelvin (SI unit)
+
+    @staticmethod
+    def __make_temperature_eurocode_hydrocarbon(time, temperature_ambient):
+        time /= 1200.  # convert time unit from second to hour
+        temperature_ambient -= 273.15  # convert temperature from kelvin to celsius
+        temperature = 1080 * (1 - 0.325 * np.exp(-0.167 * time) - 0.675 * np.exp(-2.5 * time)) + temperature_ambient
+        return temperature + 273.15
+
+    @staticmethod
+    def __make_temperature_eurocode_externalfire(time, temperature_ambient):
+        time /= 1200.  # convert time from seconds to hours
+        temperature_ambient -= 273.15  # convert ambient temperature from kelvin to celsius
+        temperature = 660 * (1 - 0.687 * np.exp(-0.32 * time) - 0.313 * np.exp(-3.8 * time)) + temperature_ambient
+        return temperature + 273.15  # convert temperature from celsius to kelvin
 
     def write_to_csv(self, folder_path):
         data_frame = pd.DataFrame(self.__data)
         data_frame.to_csv(path_or_buf=folder_path)
-
-
-class AstmE119(object):
-    def __init__(self, time_step=1., time_start=0., time_end=18000., ambientTemperature=25):
-        self.timeStep = time_step
-        self.timeLength = time_end
-        self.ambientTemperature = ambientTemperature
-
-        # START: time-temperature curve calculation
-        timeArray = np.arange(time_step, time_end, time_step)
-        timeArray = timeArray/60/60 # convert from seconds to hours
-        temperatureArray = 750 * (1 - np.exp(-3.79553 * np.sqrt(timeArray))) + 170.41 * np.sqrt(timeArray) + ambientTemperature
-        timeArray = np.insert(timeArray * 60 * 60,0,0) # convert time array from hours to seconds, insert initial condition
-        temperatureArray = np.insert(temperatureArray, ambientTemperature, 0) # insert initial condition
-        # END: time-temperature curve calculation
-
-        self.timeArray = timeArray
-        self.temperatureArray = temperatureArray
-
-
-class Eurocode_Hydrocarbon(object):
-    """
-        Description:
-            generates Eurocode hydrocarbon time-temperature fire curve in numpy array
-        Attributs:
-            timeStep            {double, s⁻¹}           time step between each interval
-            timeLength          {double, s}             time span, i.e. x-axis limit
-            ambientTemperature  {double, ℃}             ambient temperature
-        Methods:
-            TimeInMinutes()     {ndarray, min}          convert time array data into minutes
-    """
-    def __init__(self, time_step=1.0, time_start=0., time_end=18000., temperature_ambient=293.15):
-        self._time_step = time_step
-        self._time_start = time_start
-        self._time_end = time_end
-        self._temperature_ambient = temperature_ambient
-
-        # START: time-temperature curve calculation
-        timeArray = np.arange(timeStep,timeLength,timeStep)
-        timeArray = timeArray / 60 # convert from seconds to hours
-        temperatureArray = 1080 * (1 - 0.325 * np.exp(-0.167 * timeArray) - 0.675 * np.exp(-2.5 * timeArray)) + ambientTemperature
-        timeArray = np.insert(timeArray * 60,0,0) # convert time array from hours to seconds, insert initial condition
-        temperatureArray = np.insert(temperatureArray,ambientTemperature,0) # insert initial condition
-        # END: time-temperature curve calculation
-
-        self.timeArray = timeArray
-        self.temperatureArray = temperatureArray
-
-    def __make_time(self):
-        pass
-
-        self.time = np.arange(0, time_end + time_step, time_step)
-        self.__data['Time [s]'] = self.time
-
-    def __make_temperatures(self):
-        time = self.time
-        temperature_ambient = self._temperature_ambient - 273.15
-
-        temperature = 345. * np.log10(time[1:] / 60. * 8. + 1.) + temperature_ambient
-        temperature = np.insert(temperature, 0, np.asarray([temperature_ambient]))
-
-        self.temperature = temperature + 273.15
-        self.__data['Temperature [K]'] = self.temperature
-        self.__data['Temperature [C]'] = self.temperature - 273.15
-
-    def write_to_csv(self, folder_path):
-        data_frame = pd.DataFrame(self.__data)
-        data_frame.to_csv(path_or_buf=folder_path)
-
-
-
-class Eurocode_ExternalFire(object):
-    """
-        Description:
-            generates Eurocode external fire time-temperature curve
-        Attributs:
-            timeStep            {double, s⁻¹}           time step between each interval
-            timeLength          {double, s}             time span, i.e. x-axis limit
-            ambientTemperature  {double, ℃}             ambient temperature
-        Methods:
-            TimeInMinutes()     {ndarray, min}          convert time array data into minutes
-    """
-    def __init__(self, timeStep = 1.0, timeLength = 18000, ambientTemperature = 25):
-        self.timeStep = timeStep
-        self.timeLength = timeLength
-        self.ambientTemperature = ambientTemperature
-
-        # START: time-temperature curve calculation
-        timeArray = np.arange(timeStep,timeLength,timeStep)
-        timeArray = timeArray / 60. # convert from seconds to hours
-        temperatureArray = 660 * (1 - 0.687 * np.exp(-0.32 * timeArray) - 0.313 * np.exp(-3.8 * timeArray)) + ambientTemperature
-        timeArray = np.insert(timeArray * 60,0,0) # convert time array from hours to seconds, insert initial condition
-        temperatureArray = np.insert(temperatureArray,ambientTemperature,0) # insert initial condition
-        # END: time-temperature curve calculation
-
-        self.timeArray = timeArray
-        self.temperatureArray = temperatureArray
+# TODO: Have EurocodeParametricFire class into FireCurve class
 
 
 class EurocodeParametricFire(object):
-    """
-    Description:
-        BS EN 1991-1-2:2002, Annex A
-        Generates Eurocode external fire time-temperature curve
-    Attributes:
+    """Generates Eurocode external fire time-temperature curve (BS EN 1991-1-2:2002, Annex A)
+        Attributes:
         totalEnclosureArea      {float, m²}             Total internal surface area, including openings
         floorArea               {float, m²}             Floor area
         openingArea             {float, m²}             Vertical open area

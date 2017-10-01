@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
 from scipy import integrate
-import pandas as pd
 
 
 def steel_property_(property_type='c_s, k, reduction_factor', steel_type='carbon steel'):
@@ -21,6 +20,7 @@ def steel_property_(property_type='c_s, k, reduction_factor', steel_type='carbon
         elif 600 <= temperature < 735:
             return 666 + 13002 / (738 - temperature)
         elif 735 <= temperature < 900:
+            return 545 + 17820 / (temperature - 731)
         elif 900 <= temperature <= 1200:
             return 650
         else:

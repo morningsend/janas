@@ -22,7 +22,6 @@ sdist/
 var/
 wheels/
 *.egg-info/
-.idea/
 .installed.cfg
 *.egg
 
@@ -101,3 +100,7 @@ ENV/
 # mypy
 .mypy_cache/
 .idea/janas.iml
+.DS_Store
+test data.csv
+test figure.png
+.idea/

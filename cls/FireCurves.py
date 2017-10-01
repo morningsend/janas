@@ -205,7 +205,7 @@ class EurocodeParametricFire(object):
         if self.openingFactor>0.04 and self.fireLoadDensityTotal < 75 and self.b < 1160:
             # (A.10)
             self.lamdaLimiting *= (1 +
-                                   ((self.openingFactor - 0.04) / 0.04) *
+                                   ((self.openingFactor - 0.04) / 0.04) *f
                                    ((self.fireLoadDensityTotal - 75) / 75) *
                                    ((1160 - self.b) / 1160))
         self.timePeakTemperature = max([0.2e-3 * self.fireLoadDensityTotal / self.openingFactor, self.timeLimiting])

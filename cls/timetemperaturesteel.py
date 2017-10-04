@@ -92,65 +92,91 @@ class SteelTemperature(object):
     REMARKS:
             1. Steel temperature is limited within 20C <= T_s <= 1200, due to specific heat
     """
-    def __init__(self, fire_curve, kind_steel):
+    def __init__(self, fire_curve, type_steel, **kwargs):
         # Attributes, compulsory
         self._fire_curve = fire_curve           # FireCurve object
-        self.__kwargs = None                    # keyword arguments, varies for different 'fire_curve'
+        self._type_steel = type_steel
+        self.__kwargs = kwargs                  # keyword arguments, varies for different 'fire_curve'
 
-        # section_perimeter = np.nan        # perimeter of the subjected steel section
-        # area_section = np.nan             # area of the the subjected steel section
-        # perimeter_box = np.nan            # perimeter of the subjected steel section
-        # density_steel = np.nan            # density of the subjected steel section
-        # h_convection = np.nan             # convective heat transfer coefficient
-        # emissivity_resultant = np.nan     # resultant emissivity
+        # Attributes, ouput container
+        self._data_output = None
+        self.temperature = None
 
-        # Attributes (derived)
-        self.temperature = None                 # steel temperature
-        self.temperature_rate = None            # steel temperature change rate
-        self.heat_flux_net = None               # net heat flux
-        self.c_steel = None                     # specific heat of the subjected steel section
-        # 
-        # stress_yield = np.nan
-        # stress_proportional = np.nan
-        # elastic_modulus = np.nan
-        # volume_section = np.nan
-        # slenderness = np.nan
-        # density_steel = np.nan
-        # # self.memberLength = float(member_length)
-        # specific_heat_protection = np.nan
-        # k_protection = np.nan
-        # density_protection = np.nan
-        # thickness_protection = np.nan
-        # area_protection = np.nan
-        # 
-        # effective_yield_reduction_factor_steel = None
-        # proportional_limit_reduction_factor_steel = None
-        # elastic_modulus_reduction_factor_steel = None
-        # slenderness_steel = None
-        # 
-        # strength_steel = None
-        # thermal_strain_steel = None
-        # thermal_stress_steel = None
+        self.time = self._fire_curve.time
+        self.temperature_fire = self._fire_curve.temperature
 
-    def __default_value(self, variable_name, default_value=np.nan):
-        if variable_name in self.__kwargs:
-            return self.__kwargs[variable_name]
+        self.__check_parameters_for_type()
+
+        self.__make_temperature_eurocode_protected_steel(
+            time=self.__kwargs["time"],
+            temperature_fire=self.__kwargs["temperature_fire"],
+            density_steel=self.__kwargs["density_steel"],
+            c_steel_T=self.__kwargs["c_steel_T"],
+            area_steel_section=self.__kwargs["area_steel_section"],
+            k_protection=self.__kwargs["k_protection"],
+            density_protection=self.__kwargs["density_protection"],
+            c_protection=self.__kwargs["c_protection"],
+            thickness_protection=self.__kwargs["thickness_protection"],
+            perimeter_protected=self.__kwargs["perimeter_protected"]
+        )
+
+    # def __default_value(self, variable_name, default_value=np.nan):
+    #     if variable_name in self.__kwargs:
+    #         return self.__kwargs[variable_name]
+    #     else:
+    #         return default_value
+
+    def __check_parameters_for_type(self):
+        # Set required parameters for different options/functions
+        params_dict = {
+            "eurocode unprotected":
+                [
+                    "time",
+                    "temperature_fire",
+                    "perimeter_section",
+                    "area_section",
+                    "perimeter_box",
+                    "density_steel",
+                    "h_conv",
+                    "emissivity_resultant",
+                ],
+            "eurocode protected":
+                [
+                    "time",
+                    "temperature_fire",
+                    "density_steel",
+                    "c_steel_T",
+                    "area_steel_section",
+                    "k_protection",
+                    "density_protection",
+                    "c_protection",
+                    "thickness_protection",
+                    "perimeter_protected",
+                ],
+        }
+
+        # Error handler when parameters are missing
+        if self._type_steel not in params_dict:
+            raise ValueError("Unexpected steel type: {0}".format(self._type_steel))
         else:
-            return default_value
+            params_missing, params_required = [], params_dict[self._type_steel]
 
-    def define_steel_properties(
-            self, perimeter_section, area_section, perimeter_box, density_steel, h_conv, emissivity_resultant
-    ):
-        self._section_perimeter = float(perimeter_section)
-        self._area_section = float(area_section)
-        self._perimeter_box = float(perimeter_box)
-        self._density_steel = float(density_steel)
-        self._h_convection = float(h_conv)  # convective heat transfer coefficient
-        self._emissivity_resultant = float(emissivity_resultant)
+            for each_param in params_required:
+                if each_param not in self.__kwargs:
+                    params_missing.append(each_param)
+
+            if len(params_missing) > 0:
+                raise ValueError("Missing required parameter: {0}.".format(", ".join(params_missing)))
 
     @staticmethod
     def __make_temperature_eurocode_unprotected_steel(
-            time, temperature_fire, perimeter_section, area_section, perimeter_box, density_steel, h_conv,
+            time,
+            temperature_fire,
+            perimeter_section,
+            area_section,
+            perimeter_box,
+            density_steel,
+            h_conv,
             emissivity_resultant
     ):
 
@@ -190,11 +216,31 @@ class SteelTemperature(object):
         return temperature_steel, temperature_rate_steel, heat_flux_net, c_s
 
     @staticmethod
-    def get_steel_temperature(
-            time, temperature_fire,
-            c_steel, density_steel, area_steel_section,
-            k_protection, density_protection, c_protection, thickness_protection, perimeter_protected
+    def __make_temperature_eurocode_protected_steel(
+            time,
+            temperature_fire,
+            density_steel,
+            c_steel_T,
+            area_steel_section,
+            k_protection,
+            density_protection,
+            c_protection,
+            thickness_protection,
+            perimeter_protected
     ):
+        params_required = [
+            "time",
+            "temperature_fire",
+            "density_steel",
+            "c_steel_T",
+            "area_steel_section",
+            "k_protection",
+            "density_protection",
+            "c_protection",
+            "thickness_protection",
+            "perimeter_protected",
+        ]
+        
         V = area_steel_section
         rho_a = density_steel
         lambda_p = k_protection
@@ -212,7 +258,7 @@ class SteelTemperature(object):
         next(temperature_steel_)  # skip the first item
         for i, v in enumerate(temperature_steel_):
             i += 1  # actual index since the first item had been skipped.
-            specific_heat_steel[i] = c_steel(temperature_steel[i-1]+273.15)
+            specific_heat_steel[i] = c_steel_T(temperature_steel[i - 1] + 273.15)
 
             # Steel temperature equations are from [BS EN 1993-1-2:2005, Clauses 4.2.5.2]
             phi = (c_p * rho_p / specific_heat_steel[i] / rho_a) * d_p * A_p / V

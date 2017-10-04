@@ -6,7 +6,7 @@ import pandas as pd
 
 
 class ISO834(object):
-    """Generates so 'standard fire curve' based on ISO 834
+    """Generates so 'standard fire_curve curve' based on ISO 834
         Attributes:
             _time_step              float               s, time step between each interval
             _time_length            float               s, time upper boundary
@@ -74,7 +74,7 @@ class AstmE119(object):
 class Eurocode_Hydrocarbon(object):
     """
         Description:
-            generates Eurocode hydrocarbon time-temperature fire curve in numpy array
+            generates Eurocode hydrocarbon time-temperature fire_curve curve in numpy array
         Attributs:
             timeStep            {double, s⁻¹}           time step between each interval
             timeLength          {double, s}             time span, i.e. x-axis limit
@@ -125,7 +125,7 @@ class Eurocode_Hydrocarbon(object):
 class Eurocode_ExternalFire(object):
     """
         Description:
-            generates Eurocode external fire time-temperature curve
+            generates Eurocode external fire_curve time-temperature curve
         Attributs:
             timeStep            {double, s⁻¹}           time step between each interval
             timeLength          {double, s}             time span, i.e. x-axis limit
@@ -154,7 +154,7 @@ class EurocodeParametricFire(object):
     """
     Description:
         BS EN 1991-1-2:2002, Annex A
-        Generates Eurocode external fire time-temperature curve
+        Generates Eurocode external fire_curve time-temperature curve
     Attributes:
         totalEnclosureArea      {float, m²}             Total internal surface area, including openings
         floorArea               {float, m²}             Floor area
@@ -172,7 +172,7 @@ class EurocodeParametricFire(object):
         TimeInMinutes()         {ndarray, min}          convert time array data into minutes
     Remarks:
         *   When estimating extinction time, a upper bound value of 12 hours is used for approximation. Code will
-            fail to find the extinguish time if the fire does not extinguish within 12 hours. A maximum 1000 loops
+            fail to find the extinguish time if the fire_curve does not extinguish within 12 hours. A maximum 1000 loops
             is constrained.
         *   0.02 <= opening factor <= 0.002
         *   100 <= b (thermal inertia) <= 2200

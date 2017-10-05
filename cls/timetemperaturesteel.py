@@ -1,81 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from scipy import integrate
-
-
-def steel_property_(property_type='c_s, k, reduction_factor', steel_type='carbon steel'):
-    def steel_specific_heat_carbon_steel(temperature):
-        """
-            DESCRIPTION:
-                [BS EN 1993-1-2:2005, 3.4.1.2]
-                Calculate steel specific heat according to temperature
-            PARAMETERS:
-                temperature     {float, K}          Given temperature
-
-                __return__      {float, J/kg/K}     Specific heat
-        """
-        temperature -= 273.15
-        if 20 <= temperature < 600:
-            return 425 + 0.773 * temperature - 1.69e-3 * np.power(temperature, 2) + 2.22e-6 * np.power(temperature, 3)
-        elif 600 <= temperature < 735:
-            return 666 + 13002 / (738 - temperature)
-        elif 735 <= temperature < 900:
-            return 545 + 17820 / (temperature - 731)
-        elif 900 <= temperature <= 1200:
-            return 650
-        else:
-            return 0
-
-    def thermal_conductivity_carbon_steel(temperature):
-        """
-            DESCRIPTION:
-                [BS EN 1993-1-2:2005, 3.4.1.3]
-            PARAMETERS:
-            OUTPUTS:
-            REMARKS:
-        """
-        temperature += 273.15
-        if 20 <= temperature <= 800:
-            return 54 - 0.0333 * temperature
-        elif 800 <= temperature <= 1200:
-            return 27.3
-        else:
-            return 0
-
-    def reduction_factor_carbon_steel(steel_temperature):
-        """
-        DESCRIPTION:
-            [BS EN 1993-1-2:2005, Table 3.1]
-            Return reductions factors given temperature.
-        PARAMETERS:
-            temperature     {float, K}  Steel temperature
-
-            self            {tuple, -}  (k_y_theta, k_p_theta, k_E_theta)
-            k_y_theta       {float, /}  reduction factor for effective yield strength
-            k_p_theta       {float, /}  reduction factor for proportional limit
-            k_E_theta       {float, /}  reduction factor for the slope of the linear elastic range
-        REMARKS:
-            1.  293 [K] < steel_temperature < 1473 [K]
-        """
-        steel_temperature -= 273.15  # convert from [K] to [C], as the data below is in [C]
-        temperature = [20, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200]
-        k_y_theta = [1, 1, 1, 1, 1, 0.78, 0.47, 0.23, 0.11, 0.06, 0.04, 0.02, 0]
-        k_p_theta = [1, 1, 0.807, 0.613, 0.42, 0.36, 0.18, 0.075, 0.05, 0.0375, 0.025, 0.0125, 0]
-        k_E_theta = [1, 1, 0.9, 0.8, 0.7, 0.6, 0.31, 0.13, 0.09, 0.0675, 0.045, 0.0225, 0]
-
-        k_y_theta = np.interp(steel_temperature, temperature, k_y_theta)
-        k_p_theta = np.interp(steel_temperature, temperature, k_p_theta)
-        k_E_theta = np.interp(steel_temperature, temperature, k_E_theta)
-
-        return k_y_theta, k_p_theta, k_E_theta
-
-    function_dictionary = {
-        "specific heat": steel_specific_heat_carbon_steel,
-        "thermal conductivity": thermal_conductivity_carbon_steel,
-        "reduction factor": reduction_factor_carbon_steel
-    }
-
-    return function_dictionary[property_type]
+import pandas as pd
+from scipy import integrate, gradient
 
 
 class SteelTemperature(object):
@@ -92,25 +18,22 @@ class SteelTemperature(object):
     REMARKS:
             1. Steel temperature is limited within 20C <= T_s <= 1200, due to specific heat
     """
-    def __init__(self, fire_curve, type_steel, **kwargs):
+    def __init__(self, type_steel, **kwargs):
         # Attributes, compulsory
-        self._fire_curve = fire_curve           # FireCurve object
         self._type_steel = type_steel
         self.__kwargs = kwargs                  # keyword arguments, varies for different 'fire_curve'
 
-        # Attributes, ouput container
-        self._data_output = None
+        # Attributes, output container
+        self._df_output = None
+        self.time = None
         self.temperature = None
 
-        self.time = self._fire_curve.time
-        self.temperature_fire = self._fire_curve.temperature
+        self.__check_parameters()
 
-        self.__check_parameters_for_type()
-
-        self.__make_temperature_eurocode_protected_steel(
+        self._df_output, self.time, self.temperature = self.__make_temperature_eurocode_protected_steel(
             time=self.__kwargs["time"],
             temperature_fire=self.__kwargs["temperature_fire"],
-            density_steel=self.__kwargs["density_steel"],
+            rho_steel_T=self.__kwargs["density_steel"],
             c_steel_T=self.__kwargs["c_steel_T"],
             area_steel_section=self.__kwargs["area_steel_section"],
             k_protection=self.__kwargs["k_protection"],
@@ -118,15 +41,9 @@ class SteelTemperature(object):
             c_protection=self.__kwargs["c_protection"],
             thickness_protection=self.__kwargs["thickness_protection"],
             perimeter_protected=self.__kwargs["perimeter_protected"]
-        )
+        )[0:3]
 
-    # def __default_value(self, variable_name, default_value=np.nan):
-    #     if variable_name in self.__kwargs:
-    #         return self.__kwargs[variable_name]
-    #     else:
-    #         return default_value
-
-    def __check_parameters_for_type(self):
+    def __check_parameters(self):
         # Set required parameters for different options/functions
         params_dict = {
             "eurocode unprotected":
@@ -137,6 +54,7 @@ class SteelTemperature(object):
                     "area_section",
                     "perimeter_box",
                     "density_steel",
+                    "c_steel_T",
                     "h_conv",
                     "emissivity_resultant",
                 ],
@@ -168,6 +86,10 @@ class SteelTemperature(object):
             if len(params_missing) > 0:
                 raise ValueError("Missing required parameter: {0}.".format(", ".join(params_missing)))
 
+    def write_to_csv(self, folder_path):
+        data_frame = pd.DataFrame(self._df_output)
+        data_frame.to_csv(path_or_buf=folder_path, index=False)
+
     @staticmethod
     def __make_temperature_eurocode_unprotected_steel(
             time,
@@ -176,6 +98,7 @@ class SteelTemperature(object):
             area_section,
             perimeter_box,
             density_steel,
+            c_steel_T,
             h_conv,
             emissivity_resultant
     ):
@@ -193,14 +116,13 @@ class SteelTemperature(object):
         h_c = h_conv
         sigma = 56.7e-9  # todo: what is this?
         epsilon = emissivity_resultant
-        c_s_ = steel_property_('specific heat')
 
         time_, temperature_steel[0], c_s[0] = iter(time), temperature_fire[0], 0.
         next(time_)
         for i, v in enumerate(time_):
             i += 1
             T_f, T_s_ = temperature_fire[i], temperature_steel[i-1]  # todo: steel specific heat
-            c_s[i] = c_s_(temperature_steel[i-1])
+            c_s[i] = c_steel_T(temperature_steel[i - 1])
 
             # BS EN 1993-1-2:2005 (e4.25)
             a = h_c * (T_f - T_s_)
@@ -219,7 +141,7 @@ class SteelTemperature(object):
     def __make_temperature_eurocode_protected_steel(
             time,
             temperature_fire,
-            density_steel,
+            rho_steel_T,
             c_steel_T,
             area_steel_section,
             k_protection,
@@ -228,10 +150,13 @@ class SteelTemperature(object):
             thickness_protection,
             perimeter_protected
     ):
+        # todo: 4.2.5.2 (2) - thermal properties for the insulation material
+        # todo: revise BS EN 1993-1-2:2005, Clauses 4.2.5.2
+
         params_required = [
             "time",
             "temperature_fire",
-            "density_steel",
+            "rho_steel_T",
             "c_steel_T",
             "area_steel_section",
             "k_protection",
@@ -242,7 +167,7 @@ class SteelTemperature(object):
         ]
         
         V = area_steel_section
-        rho_a = density_steel
+        rho_a = rho_steel_T
         lambda_p = k_protection
         rho_p = density_protection
         d_p = thickness_protection
@@ -253,27 +178,45 @@ class SteelTemperature(object):
         temperature_rate_steel = time * 0.
         specific_heat_steel = time * 0.
 
+        # Check time step <= 30 seconds. [BS EN 1993-1-2:2005, Clauses 4.2.5.2 (3)]
+        time_change = gradient(time)
+        # if np.max(time_change) > 30.:
+            # raise ValueError("Time step needs to be less than 30s: {0}".format(np.max(time)))
+
         temperature_steel[0] = temperature_fire[0]  # initially, steel temperature is equal to ambient
-        temperature_steel_ = iter(temperature_steel)  # skip the first item
-        next(temperature_steel_)  # skip the first item
-        for i, v in enumerate(temperature_steel_):
+        temperature_fire_ = iter(temperature_fire)  # skip the first item
+        next(temperature_fire_)  # skip the first item
+        for i, T_g in enumerate(temperature_fire_):
             i += 1  # actual index since the first item had been skipped.
             specific_heat_steel[i] = c_steel_T(temperature_steel[i - 1] + 273.15)
 
-            # Steel temperature equations are from [BS EN 1993-1-2:2005, Clauses 4.2.5.2]
-            phi = (c_p * rho_p / specific_heat_steel[i] / rho_a) * d_p * A_p / V
+            # Steel temperature equations are from [BS EN 1993-1-2:2005, Clauses 4.2.5.2, Eq. 4.27]
+            phi = (c_p * rho_p / specific_heat_steel[i] / rho_a(T_g)) * d_p * A_p / V
 
-            a = (lambda_p*A_p/V) / (d_p * specific_heat_steel[i] * rho_a)
-            b = (v-temperature_steel[i-1]) / (1+phi/3)
-            c = (np.exp(phi/10)-1) * (v-temperature_fire[i-1])
+            a = (lambda_p*A_p/V) / (d_p * specific_heat_steel[i] * rho_a(T_g))
+            b = (T_g-temperature_steel[i-1]) / (1.+phi/3.)
+            c = (np.exp(phi/10.)-1.) * (T_g-temperature_fire[i-1])
             d = time[i] - time[i-1]
 
-            temperature_rate_steel[i] = a * b * d - c
+            temperature_rate_steel[i] = (a * b * d - c) / d  # deviated from e4.27, converted to rate (s-1)
 
-            if temperature_rate_steel[i] < 0 < v-temperature_steel[i - 1]:
-                temperature_rate_steel[i] = 0
+            temperature_steel[i] = temperature_steel[i-1] + temperature_rate_steel[i] * d
 
-            temperature_steel[i] = temperature_steel[i-1] + temperature_rate_steel[i]
+            T_range_u = max([temperature_steel[i-1], T_g])
+            T_range_l = min([temperature_steel[i-1], T_g])
+            if temperature_steel[i] < T_range_l:
+                temperature_steel[i] = T_range_l
+                temperature_rate_steel[i] = (temperature_steel[i] - temperature_steel[i-1]) / d
+            elif temperature_steel[i] > T_range_u:
+                temperature_steel[i] = T_range_u
+                temperature_rate_steel[i] = (temperature_steel[i] - temperature_steel[i-1]) / d
 
-        temperature_steel = integrate.cumtrapz(temperature_rate_steel, time, initial=0.)
-        return temperature_steel, temperature_rate_steel, specific_heat_steel
+        data_dict_out = {
+            "time [s]": time,
+            "temperature fire [K]": temperature_fire,
+            "temperature steel [K]": temperature_steel,
+            "temperature rate steel [K/s]": temperature_rate_steel,
+            "specific heat steel [J/kg/K]": specific_heat_steel
+        }
+
+        return data_dict_out, time, temperature_steel, temperature_rate_steel, specific_heat_steel

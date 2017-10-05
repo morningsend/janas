@@ -21,9 +21,9 @@ class FireCurve(object):
         else:
             return default_value
 
-    def __init__(self, type_fire_curve, **kwargs):
+    def __init__(self, type_fire, **kwargs):
         """
-        :param type_fire_curve: 'iso 834' | 'astm e119' | 'ec hydrocarbon' | 'ec external' | 'travel'
+        :param type_fire: 'iso 834' | 'astm e119' | 'ec hydrocarbon' | 'ec external' | 'travel'
         :param kwargs:
             Variable Name                               type_fire_curve
             time_start                                  all
@@ -43,12 +43,8 @@ class FireCurve(object):
         # time_step = 1.0, time_start = 0., time_end = 18000., temperature_ambient = 293.15
 
         # Initiate object attributes
-        self._kind_fire_curve = type_fire_curve
+        self._kind_fire_curve = type_fire
         self.__kwargs = kwargs
-        self._time_start = self.__default_value('time_start', 0.)
-        self._time_end = self.__default_value('time_end', 60.*60.*2.)
-        self._time_step = self.__default_value('time_step', 1.)
-        self._temperature_ambient = self.__default_value('temperature_ambient', 293.15)
 
         # Initiate object attributes (derived)
         self.time = None
@@ -56,7 +52,6 @@ class FireCurve(object):
         self.__data_output = {"Time [s]": None, "Temperature [K]": None, "Temperature [C]": None}
 
         # Object methods
-        self.time = self.__make_time(self._time_start, self._time_end, self._time_step)
         fires = {
             'iso 834': self.__make_temperatures_iso834,
             'astm e119': self.__make_temperatures_astm_e119,
@@ -64,64 +59,18 @@ class FireCurve(object):
             'eurocode external': self.__make_temperature_eurocode_external_fire,
             "travel": self.__make_temperature_travelling_fire,
         }
-        self.temperature = fires[self._kind_fire_curve](np.array(self.time), float(self._temperature_ambient))
-
-        self.__data_output['Time [s]'] = self.time
-        self.__data_output['Temperature [K]'] = self.temperature
-        self.__data_output['Temperature [C]'] = self.temperature - 273.15
-
-    def __check_input_parameters(self):
-        variable_required = {
-            "travel": [
-                "time",
-                "temperature_ambient",
-                "fire_load_density",
-                "heat_release_rate_density",
-                "speed_fire_spread",
-                "distance_compartment_length",
-                "distance_compartment_width",
-                "area_ventilation",
-                "distance_ventilation_height",
-                "distance_element_to_fuel_bed_height",
-                "distance_element_to_fire_origin"
-            ]
-        }
-        dict = [
-            "time",
-            "temperature_ambient",
-            "fire_load_density",
-            "heat_release_rate_density",
-            "speed_fire_spread",
-            "distance_compartment_length",
-            "distance_compartment_width",
-            "area_ventilation",
-            "distance_ventilation_height",
-            "distance_element_to_fuel_bed_height",
-            "distance_element_to_fire_origin"
-        ]
-        for v in dict:
-            if v not in self.__kwargs:
-                pass
-        return False
-
-    @staticmethod
-    def __make_time(
-            time_start,
-            time_end,
-            time_step
-    ):
-        time = np.arange(time_start, time_end + time_step, time_step)
-        time[time <= 0] = np.nan
-        return time
+        self.__data_output, self.time, self.temperature = fires[self._kind_fire_curve](**kwargs)[0:3]
 
     @staticmethod
     def __make_temperatures_iso834(
             time,
             temperature_ambient
     ):
+        time[time<0] = np.nan
         time /= 60.  # convert time from second to minute
         temperature_ambient -= 273.15
         temperature = 345. * np.log10(time * 8. + 1.) + temperature_ambient
+        temperature[temperature == np.nan] = temperature_ambient
         return temperature + 273.15  # convert from celsius to kelvin
 
     @staticmethod
@@ -155,19 +104,7 @@ class FireCurve(object):
         return temperature + 273.15  # convert temperature from celsius to kelvin
 
     @staticmethod
-    def __make_temperature_travelling_fire(
-            time,
-            temperature_ambient,
-            fire_load_density,
-            heat_release_rate_density,
-            distance_compartment_length,
-            distance_compartment_width,
-            speed_fire_spread,
-            area_ventilation,
-            distance_ventilation_height,
-            distance_element_to_fuel_bed_height,
-            distance_element_to_fire_origin
-    ):
+    def __make_temperature_travelling_fire(**kwargs):
         [
             "time",
             "temperature_ambient",
@@ -182,16 +119,32 @@ class FireCurve(object):
             "distance_element_to_fire_origin"
         ]
         # re-assign variable names for equation readability
-        T_0 = temperature_ambient
-        q_fd = fire_load_density * 10e6
-        RHRf = heat_release_rate_density * 10e6
-        l = distance_compartment_length
-        w = distance_compartment_width
-        s = speed_fire_spread
-        A_v = area_ventilation
-        h_eq = distance_ventilation_height
-        h_s = distance_element_to_fuel_bed_height
-        l_s = distance_element_to_fire_origin
+        time = np.arange(
+            kwargs["time_start"],
+            kwargs["time_end"] + kwargs["time_step"],
+            kwargs["time_step"]
+        )
+        T_0 = kwargs["temperature_ambient"] - 273.15
+        q_fd = kwargs["fire_load_density"] / 1.e6
+        RHRf = kwargs["heat_release_rate_density"] / 1.e6
+        l = kwargs["distance_compartment_length"]
+        w = kwargs["distance_compartment_width"]
+        s = kwargs["speed_fire_spread"]
+        A_v = kwargs["area_ventilation"]
+        h_eq = kwargs["distance_ventilation_height"]
+        h_s = kwargs["distance_element_to_fuel_bed_height"]
+        l_s = kwargs["distance_element_to_fire_origin"]
+
+
+        fire_load_density_MJm2=900
+        heat_release_rate_density_MWm2=0.15
+        length_compartment_m=150
+        width_compartment_m=17.4
+        fire_spread_rate_ms=0.012
+        area_ventilation_m2=190
+        height_ventilation_opening_m=3.3
+        height_fuel_to_element_m=3.5
+        length_element_to_fire_origin_m=105
 
         # workout burning time etc.
         t_burn = max([q_fd / RHRf, 900.])
@@ -230,20 +183,25 @@ class FireCurve(object):
         l_fire_end[l_fire_end > l] = l
         l_fire_median = (l_fire_front + l_fire_end) / 2.
         r = np.absolute(l_s - l_fire_median)
+        r[r == 0] = 0.001  # will cause crash if r = 0
 
         # workout the far field temperature of gas T_g
         T_g1 = (5.38 * np.power(Q / r, 2 / 3) / h_s) * (r / h_s > 0.18).astype(int)
         T_g2 = (16.9 * np.power(Q, 2 / 3) / np.power(h_s, 5/3)) * (r/h_s <= 0.18).astype(int)
         T_g = T_g1 + T_g2 + T_0
+
         T_g[T_g >= 1200.] = 1200.
 
         # unit conversion to SI
         T_g += 273.15
-        Q /= 10e6
+        Q *= 10e6
 
-        return T_g, Q, r
-
-
+        data_dict_output = {
+            "heat release [MJ]": Q,
+            "temperature fire [K]": T_g,
+            "distance fire to element [m]": r
+        }
+        return data_dict_output, time, T_g, Q, r
 
     def write_to_csv(self, folder_path):
         data_frame = pd.DataFrame(self.__data_output)

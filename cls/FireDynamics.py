@@ -86,6 +86,8 @@ def relative_thermal_elongation_carbon_steel(steel_temperature):
     return relative_thermal_elongation
 
 
+
+
 def stress_strain_elevated_temperature_carbon_steel(steel_strain, stress_proportional, stress_yield, elastic_modulus):
     """
         DESCRIPTION:

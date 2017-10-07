@@ -3,15 +3,14 @@ import os
 import sys
 import matplotlib.pyplot as plt
 from dat.property_steel import thermal as SteelProperty
-from cls.timetemperaturefires import FireCurve
-from cls.timetemperaturesteel import SteelTemperature
+from cls import FireCurve, SteelTemperature
 
 folder_path = os.path.realpath(__file__)
 folder_path = os.path.dirname(folder_path)
 print(folder_path)
 
 # The standard fire_curve curve ISO 834
-fire_curve = FireCurve(
+fire_curve = FireCurve.FireCurve(
     "travel",
     time_start=0.,
     time_end=22080,
@@ -32,7 +31,7 @@ fire_curve.write_to_csv("/".join([folder_path, "fire.csv"]))
 plt.plot(fire_curve.time, fire_curve.temperature-273.15)
 plt.savefig('fire.png')
 
-protected_steel = SteelTemperature(
+protected_steel = SteelTemperature.SteelTemperature(
     "eurocode protected",
     time=fire_curve.time,
     temperature_fire=fire_curve.temperature,
